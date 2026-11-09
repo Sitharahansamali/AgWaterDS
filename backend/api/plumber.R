@@ -12,6 +12,38 @@ source("backend/R/database/db_connection.R")
 source("backend/R/database/indicator_queries.R")
 source("backend/R/services/indicator_service.R")
 
+api_error_response <- function(e, res) {
+
+  # Log the actual error in the R console
+  message(
+    "AgWaterDS API error: ",
+    conditionMessage(e)
+  )
+
+  # Handle invalid user input
+  if (inherits(e, "agwaterds_validation_error")) {
+
+    res$status <- 400L
+
+    return(
+      list(
+        status = "error",
+        message = conditionMessage(e)
+      )
+    )
+  }
+
+  # Handle unexpected server/database errors
+  res$status <- 500L
+
+  return(
+    list(
+      status = "error",
+      message = "An unexpected server error occurred."
+    )
+  )
+}
+
 
 # ==========================================
 # HEALTH CHECK
