@@ -96,3 +96,53 @@ function(admin_id = NULL, start_date = NULL, end_date = NULL) {
 
   return(result)
 }
+
+#* @get /api/soil-moisture
+#* @serializer json
+function(admin_id = NULL, start_date = NULL, end_date = NULL) {
+
+  con <- connect_db()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  conditions <- character()
+  params <- list()
+
+  if (!is.null(admin_id) && nzchar(admin_id)) {
+    conditions <- c(conditions, paste0("admin_id = $", length(params) + 1))
+    params <- c(params, list(admin_id))
+  }
+
+  if (!is.null(start_date) && nzchar(start_date)) {
+    conditions <- c(conditions, paste0("observation_date >= $", length(params) + 1))
+    params <- c(params, list(as.Date(start_date)))
+  }
+
+  if (!is.null(end_date) && nzchar(end_date)) {
+    conditions <- c(conditions, paste0("observation_date <= $", length(params) + 1))
+    params <- c(params, list(as.Date(end_date)))
+  }
+
+  sql <- "
+    SELECT
+      admin_id,
+      observation_date,
+      mean_soil_moisture,
+      unit,
+      data_source
+    FROM public.soil_moisture
+  "
+
+  if (length(conditions) > 0) {
+    sql <- paste(sql, "WHERE", paste(conditions, collapse = " AND "))
+  }
+
+  sql <- paste(sql, "ORDER BY observation_date, admin_id")
+
+  result <- DBI::dbGetQuery(
+    con,
+    sql,
+    params = params
+  )
+
+  return(result)
+}
