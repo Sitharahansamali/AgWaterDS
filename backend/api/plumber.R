@@ -8,10 +8,16 @@ library(DBI)
 library(RPostgres)
 
 # Load backend modules
-source("backend/R/database/db_connection.R")
-source("backend/R/database/indicator_queries.R")
-source("backend/R/services/indicator_service.R")
 
+project_root <- normalizePath(
+  Sys.getenv("AGWATERDS_PROJECT_ROOT"),
+  winslash = "/",
+  mustWork = TRUE
+)
+
+source(file.path(project_root, "backend/R/database/db_connection.R"))
+source(file.path(project_root, "backend/R/database/indicator_queries.R"))
+source(file.path(project_root, "backend/R/services/indicator_service.R"))
 api_error_response <- function(e, res) {
 
   # Log the actual error in the R console
