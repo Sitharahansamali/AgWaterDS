@@ -3,6 +3,20 @@
 # AgWaterDS - Indicator Service Layer
 # ==========================================
 
+agwaterds_validation_error <- function(message) {
+  structure(
+    list(
+      message = message,
+      call = NULL
+    ),
+    class = c(
+      "agwaterds_validation_error",
+      "error",
+      "condition"
+    )
+  )
+}
+
 # Validate administrative unit ID
 validate_admin_id <- function(admin_id) {
 
@@ -15,7 +29,7 @@ validate_admin_id <- function(admin_id) {
   }
 
   if (!grepl("^NG[0-9]{3}$", admin_id)) {
-    stop("Invalid administrative unit ID format.")
+    stop(agwaterds_validation_error("Invalid administrative unit ID format."))
   }
 
   invisible(TRUE)
@@ -30,7 +44,9 @@ validate_date <- function(date_value, parameter_name) {
   }
 
   if (length(date_value) != 1 || is.na(date_value)) {
-    stop(parameter_name, " must contain exactly one date.")
+    stop(agwaterds_validation_error(
+      paste0(parameter_name, " must contain exactly one date.")
+    ))
   }
 
   parsed_date <- tryCatch(
@@ -62,7 +78,7 @@ validate_indicator_filters <- function(
   if (!is.null(start_date) &&
       !is.null(end_date) &&
       start_date > end_date) {
-    stop("start_date cannot be later than end_date.")
+    stop(agwaterds_validation_error("start_date cannot be later than end_date."))
   }
 
   invisible(TRUE)
