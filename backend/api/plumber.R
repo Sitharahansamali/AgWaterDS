@@ -18,6 +18,12 @@ project_root <- normalizePath(
 source(file.path(project_root, "backend/R/database/db_connection.R"))
 source(file.path(project_root, "backend/R/database/indicator_queries.R"))
 source(file.path(project_root, "backend/R/services/indicator_service.R"))
+
+source(file.path(
+  project_root,
+  "backend/R/processing/spatial_processing.R"
+))
+
 api_error_response <- function(e, res) {
 
   # Log the actual error in the R console
@@ -216,5 +222,71 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 
   }, error = function(e) {
     api_error_response(e, res)
+  })
+}
+
+
+# ==========================================
+# SPATIAL API - ADMINISTRATIVE BOUNDARIES
+# ==========================================
+
+#* Retrieve administrative boundaries as GeoJSON
+#* @get /api/map/admin-units
+#* @serializer contentType list(type="application/geo+json")
+function(res) {
+
+  tryCatch({
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    admin_geojson <- get_admin_boundaries(con)
+
+    return(admin_geojson)
+
+  }, error = function(e) {
+
+    api_error_response(e, res)
+
+  })
+}
+
+# ==========================================
+# SPATIAL API - INDICATOR MAP
+# ==========================================
+
+#* Retrieve indicator map data as GeoJSON
+#* @param indicator Indicator name
+#* @param date Observation date (YYYY-MM-DD)
+#* @param admin_id Optional administrative unit ID
+#* @param metric Required for water_balance
+#* @get /api/map/indicator
+#* @serializer contentType list(type="application/geo+json")
+function(res,
+         indicator,
+         date,
+         admin_id = NULL,
+         metric = NULL) {
+
+  tryCatch({
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    # Generate indicator GeoJSON
+    indicator_geojson <- get_indicator_map(
+      con = con,
+      indicator = indicator,
+      observation_date = date,
+      admin_id = admin_id,
+      metric = metric
+    )
+
+    return(indicator_geojson)
+
+  }, error = function(e) {
+
+    api_error_response(e, res)
+
   })
 }
