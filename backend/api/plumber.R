@@ -66,30 +66,33 @@ function() {
 # ==========================================
 
 #* Retrieve administrative units
+#* Get all administrative units
 #* @get /api/admin-units
-#* @serializer json
-function() {
+function(res) {
 
-  con <- connect_db()
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  tryCatch({
 
-  admin_data <- DBI::dbGetQuery(
-    con,
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    query <- "
+      SELECT
+        admin_id,
+        admin_name,
+        country_name,
+        country_code,
+        area_sqkm,
+        center_lat,
+        center_lon
+      FROM admin_units
+      ORDER BY admin_name
     "
-    SELECT
-      admin_id,
-      admin_name,
-      country_name,
-      country_code,
-      area_sqkm,
-      center_lat,
-      center_lon
-    FROM public.admin_units
-    ORDER BY admin_name
-    "
-  )
 
-  return(admin_data)
+    DBI::dbGetQuery(con, query)
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
 }
 
 
@@ -101,18 +104,26 @@ function() {
 #* @param admin_id Administrative unit ID
 #* @param start_date Start date (YYYY-MM-DD)
 #* @param end_date End date (YYYY-MM-DD)
+#* Get evapotranspiration data
 #* @get /api/evapotranspiration
-#* @serializer json
-function(admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 
-  con <- connect_db()
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  tryCatch({
 
-  get_evapotranspiration_service(
-    con, admin_id, start_date, end_date
-  )
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    get_evapotranspiration_service(
+      con,
+      admin_id,
+      start_date,
+      end_date
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
 }
-
 
 # ==========================================
 # SOIL MOISTURE
@@ -122,18 +133,26 @@ function(admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param admin_id Administrative unit ID
 #* @param start_date Start date (YYYY-MM-DD)
 #* @param end_date End date (YYYY-MM-DD)
+#* Get soil moisture data
 #* @get /api/soil-moisture
-#* @serializer json
-function(admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 
-  con <- connect_db()
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  tryCatch({
 
-  get_soil_moisture_service(
-    con, admin_id, start_date, end_date
-  )
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    get_soil_moisture_service(
+      con,
+      admin_id,
+      start_date,
+      end_date
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
 }
-
 
 # ==========================================
 # WATER BALANCE
@@ -143,16 +162,25 @@ function(admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param admin_id Administrative unit ID
 #* @param start_date Start date (YYYY-MM-DD)
 #* @param end_date End date (YYYY-MM-DD)
+#* Get water balance data
 #* @get /api/water-balance
-#* @serializer json
-function(admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 
-  con <- connect_db()
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  tryCatch({
 
-  get_water_balance_service(
-    con, admin_id, start_date, end_date
-  )
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    get_water_balance_service(
+      con,
+      admin_id,
+      start_date,
+      end_date
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
 }
 
 
@@ -164,14 +192,23 @@ function(admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param admin_id Administrative unit ID
 #* @param start_date Start date (YYYY-MM-DD)
 #* @param end_date End date (YYYY-MM-DD)
+#* Get crop water demand data
 #* @get /api/crop-water-demand
-#* @serializer json
-function(admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 
-  con <- connect_db()
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  tryCatch({
 
-  get_crop_water_demand_service(
-    con, admin_id, start_date, end_date
-  )
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    get_crop_water_demand_service(
+      con,
+      admin_id,
+      start_date,
+      end_date
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
 }
