@@ -9,11 +9,31 @@ library(RPostgres)
 
 # Load backend modules
 
-project_root <- normalizePath(
-  Sys.getenv("AGWATERDS_PROJECT_ROOT"),
-  winslash = "/",
-  mustWork = TRUE
-)
+configured_project_root <- Sys.getenv("AGWATERDS_PROJECT_ROOT", unset = "")
+
+if (nzchar(configured_project_root)) {
+  project_root <- normalizePath(
+    configured_project_root,
+    winslash = "/",
+    mustWork = TRUE
+  )
+} else {
+  current_directory <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+  candidate_roots <- current_directory
+
+  for (i in seq_len(2L)) {
+    candidate_roots <- c(candidate_roots, dirname(candidate_roots[length(candidate_roots)]))
+  }
+
+  module_path <- file.path("backend", "R", "database", "db_connection.R")
+  matching_roots <- candidate_roots[file.exists(file.path(candidate_roots, module_path))]
+
+  if (length(matching_roots) == 0L) {
+    stop("Unable to locate the AgWaterDS project root. Set AGWATERDS_PROJECT_ROOT.")
+  }
+
+  project_root <- matching_roots[[1L]]
+}
 
 source(file.path(project_root, "backend/R/database/db_connection.R"))
 source(file.path(project_root, "backend/R/database/indicator_queries.R"))
