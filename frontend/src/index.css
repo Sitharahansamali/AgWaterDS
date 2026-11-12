@@ -1054,6 +1054,21 @@ a:hover {
   text-transform: uppercase;
 }
 
+.status-tag-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #FECACA;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .results-meta-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

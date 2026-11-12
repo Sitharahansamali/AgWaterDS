@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
 import { NIGERIA_ADMIN_UNITS, INDICATOR_DEFINITIONS } from '../data/administrativeUnits'
-import { fetchAdminUnits, fetchEvapotranspiration, fetchSoilMoisture } from '../services/dataService'
-import EvapotranspirationResults from '../components/results/EvapotranspirationResults'
-import SoilMoistureResults from '../components/results/SoilMoistureResults'
+import { fetchAdminUnits, requestIndicators, downloadJSON } from '../services/dataService'
+import IndicatorResults from '../components/results/IndicatorResults'
 
-// Currently integrated indicators in Stages 3 & 4
-const INTEGRATED_INDICATOR_IDS = ['evapotranspiration', 'soil_moisture']
+const INTEGRATED_INDICATOR_IDS = ['evapotranspiration', 'soil_moisture', 'water_balance', 'crop_water_demand']
 
 export default function DataRequest() {
   // Administrative Units State (loaded from backend or fallback)
@@ -26,7 +24,6 @@ export default function DataRequest() {
   const [errors, setErrors] = useState({})
   const [apiErrorMessage, setApiErrorMessage] = useState(null)
   const [results, setResults] = useState(null)
-  const [activeResultTab, setActiveResultTab] = useState('soil_moisture')
   const [requestMetadata, setRequestMetadata] = useState(null)
 
   // Fetch actual administrative units from backend on mount
@@ -59,9 +56,7 @@ export default function DataRequest() {
   }, [])
 
   // Analyze selected indicators against integrated ones
-  const selectedIntegrated = selectedIndicators.filter((id) => INTEGRATED_INDICATOR_IDS.includes(id))
   const nonIntegratedSelected = selectedIndicators.filter((id) => !INTEGRATED_INDICATOR_IDS.includes(id))
-  const hasIntegrated = selectedIntegrated.length > 0
   const hasNonIntegrated = nonIntegratedSelected.length > 0
   const isWaterBalanceActive = selectedIndicators.includes('water_balance')
 
@@ -108,7 +103,6 @@ export default function DataRequest() {
     setApiErrorMessage(null)
     setResults(null)
     setRequestMetadata(null)
-    setActiveResultTab('soil_moisture')
   }
 
   // Frontend Form Validation
@@ -123,9 +117,8 @@ export default function DataRequest() {
     // 2. Indicator Validation
     if (selectedIndicators.length === 0) {
       newErrors.indicators = 'Select at least one agricultural water indicator.'
-    } else if (!hasIntegrated) {
-      newErrors.indicators =
-        'Live backend data retrieval is currently supported for Evapotranspiration and Soil Moisture. Please select Evapotranspiration and/or Soil Moisture to submit.'
+    } else if (isWaterBalanceActive && waterBalanceMetrics.length === 0) {
+      newErrors.waterBalanceMetrics = 'Select at least one Water Balance metric.'
     }
 
     // 3. Date Validation
@@ -173,30 +166,9 @@ export default function DataRequest() {
         : adminUnit
 
     try {
-      const promises = {}
-
-      if (selectedIndicators.includes('evapotranspiration')) {
-        promises.evapotranspiration = fetchEvapotranspiration({
-          admin_id: adminUnit,
-          start_date: startDate,
-          end_date: endDate,
-        })
-      }
-
-      if (selectedIndicators.includes('soil_moisture')) {
-        promises.soil_moisture = fetchSoilMoisture({
-          admin_id: adminUnit,
-          start_date: startDate,
-          end_date: endDate,
-        })
-      }
-
-      // Execute queries in parallel
-      const keys = Object.keys(promises)
-      const dataArray = await Promise.all(Object.values(promises))
-      const combinedResults = {}
-      keys.forEach((key, index) => {
-        combinedResults[key] = dataArray[index]
+      const combinedResults = await requestIndicators({
+        selectedIndicators,
+        params: { admin_id: adminUnit, start_date: startDate, end_date: endDate },
       })
 
       // Store responses and metadata in state
@@ -208,14 +180,9 @@ export default function DataRequest() {
         endDate,
         outputFormat,
         description: description.trim(),
+        selectedIndicators,
+        waterBalanceMetrics: isWaterBalanceActive ? waterBalanceMetrics : [],
       })
-
-      // Set active tab to first available indicator
-      if (combinedResults.soil_moisture) {
-        setActiveResultTab('soil_moisture')
-      } else if (combinedResults.evapotranspiration) {
-        setActiveResultTab('evapotranspiration')
-      }
 
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
@@ -226,92 +193,41 @@ export default function DataRequest() {
     }
   }
 
-  // If results have been successfully received, display the results view
+  // If results have been received, display the combined results view.
   if (results !== null && requestMetadata !== null) {
-    const hasETResult = Boolean(results.evapotranspiration)
-    const hasSMResult = Boolean(results.soil_moisture)
-    const showTabs = hasETResult && hasSMResult
+    const resultValues = Object.values(results)
+    const failedCount = resultValues.filter((result) => result.status === 'failed').length
+    const completedCount = resultValues.filter((result) => result.status === 'completed').length
+    const overallStatus = failedCount === resultValues.length
+      ? 'Failed'
+      : failedCount > 0
+        ? 'Partially completed'
+        : completedCount === 0
+          ? 'No data available'
+          : 'Completed'
 
     return (
       <div className="data-request-form-container">
         <div className="page-header-block">
           <h1 className="page-main-heading">Data Delivery Results</h1>
           <p className="page-sub-heading">
-            Review the delivered observation datasets from the R Plumber API and export to CSV.
+            Review each indicator response from the R Plumber API and export the returned data.
           </p>
         </div>
-
-        {/* Tab navigation when multiple indicators were retrieved */}
-        {showTabs && (
-          <div className="results-tabs-nav" role="tablist" aria-label="Delivered Datasets">
-            <button
-              type="button"
-              className={`results-tab-pill ${activeResultTab === 'soil_moisture' ? 'active' : ''}`}
-              onClick={() => setActiveResultTab('soil_moisture')}
-              role="tab"
-              aria-selected={activeResultTab === 'soil_moisture'}
-            >
-              <span>Soil Moisture</span>
-              <span
-                style={{
-                  backgroundColor: 'var(--color-secondary-water)',
-                  color: '#FFFFFF',
-                  borderRadius: '9999px',
-                  padding: '0.1rem 0.45rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                }}
-              >
-                {results.soil_moisture?.length || 0}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              className={`results-tab-pill ${activeResultTab === 'evapotranspiration' ? 'active' : ''}`}
-              onClick={() => setActiveResultTab('evapotranspiration')}
-              role="tab"
-              aria-selected={activeResultTab === 'evapotranspiration'}
-            >
-              <span>Evapotranspiration</span>
-              <span
-                style={{
-                  backgroundColor: 'var(--color-primary-teal)',
-                  color: '#FFFFFF',
-                  borderRadius: '9999px',
-                  padding: '0.1rem 0.45rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                }}
-              >
-                {results.evapotranspiration?.length || 0}
-              </span>
-            </button>
+        <div className="results-summary-card">
+          <strong>Overall request status: {overallStatus}</strong>
+          <p>Area: {requestMetadata.adminName} | {requestMetadata.startDate} to {requestMetadata.endDate}</p>
+          <p>Indicators: {requestMetadata.selectedIndicators.map((id) => INDICATOR_DEFINITIONS.find((item) => item.id === id)?.name || id).join(', ')}</p>
+          {requestMetadata.waterBalanceMetrics.length > 0 && <p>Water Balance metrics: {requestMetadata.waterBalanceMetrics.join(', ')}</p>}
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => { setResults(null); setRequestMetadata(null) }}>Modify Request</button>
+            <button type="button" className="btn btn-primary" onClick={() => downloadJSON({ request: requestMetadata, results }, `agwaterds_request_${requestMetadata.startDate}_to_${requestMetadata.endDate}.json`)}>Download Combined JSON</button>
           </div>
-        )}
-
-        {/* Render appropriate indicator results view */}
-        {activeResultTab === 'soil_moisture' && hasSMResult && (
-          <SoilMoistureResults
-            records={results.soil_moisture}
-            requestParams={requestMetadata}
-            onReset={() => {
-              setResults(null)
-              setRequestMetadata(null)
-            }}
-          />
-        )}
-
-        {activeResultTab === 'evapotranspiration' && hasETResult && (
-          <EvapotranspirationResults
-            records={results.evapotranspiration}
-            requestParams={requestMetadata}
-            onReset={() => {
-              setResults(null)
-              setRequestMetadata(null)
-            }}
-          />
-        )}
+        </div>
+        {requestMetadata.selectedIndicators.map((indicatorId) => {
+          const indicator = INDICATOR_DEFINITIONS.find((item) => item.id === indicatorId)
+          return <IndicatorResults key={indicatorId} indicator={indicator} result={results[indicatorId]} requestParams={requestMetadata} metricIds={indicatorId === 'water_balance' ? requestMetadata.waterBalanceMetrics : []} />
+        })}
       </div>
     )
   }
@@ -400,11 +316,7 @@ export default function DataRequest() {
                   .map((id) => INDICATOR_DEFINITIONS.find((d) => d.id === id)?.name || id)
                   .join(', ')}
               </em>
-              ) that are scheduled for subsequent stages. Currently,{' '}
-              <strong>Evapotranspiration</strong> and <strong>Soil Moisture</strong> are connected to the live backend API.
-              {hasIntegrated
-                ? ' Submitting this form will query and retrieve live records for the integrated indicators only.'
-                : ' Please select Evapotranspiration and/or Soil Moisture to execute a live data request.'}
+              ) are available through the live backend API. Each selected indicator is requested independently, so a failed endpoint does not discard successful results.
             </p>
           </div>
         </div>
@@ -499,7 +411,7 @@ export default function DataRequest() {
               <span className="form-section-number-tag">Section 2</span>
               <h2 className="form-section-title">Indicator Selection</h2>
               <p className="form-section-instruction">
-                Select one or multiple agricultural water indicators. Evapotranspiration and Soil Moisture are integrated with live backend delivery.
+                Select one or multiple agricultural water indicators for one combined request.
               </p>
             </div>
 
@@ -570,7 +482,7 @@ export default function DataRequest() {
                               borderRadius: '3px',
                             }}
                           >
-                            Next Stage
+                            Live API
                           </span>
                         )}
                         <span className="indicator-code-badge">{indicator.code}</span>
@@ -595,7 +507,7 @@ export default function DataRequest() {
                     Water Balance Metric Options
                   </h3>
                   <p className="metrics-panel-subtitle">
-                    Select the specific components to retrieve for the water balance calculation (scheduled for integration):
+                    Select the specific Water Balance components to include in the results and exports:
                   </p>
                 </div>
 
