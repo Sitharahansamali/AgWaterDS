@@ -1,20 +1,63 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NIGERIA_ADMIN_UNITS, INDICATOR_DEFINITIONS } from '../data/administrativeUnits'
+import { fetchAdminUnits, fetchEvapotranspiration } from '../services/dataService'
+import EvapotranspirationResults from '../components/results/EvapotranspirationResults'
 
 export default function DataRequest() {
+  // Administrative Units State (loaded from backend or fallback)
+  const [adminUnitsList, setAdminUnitsList] = useState(NIGERIA_ADMIN_UNITS)
+
   // Form State
   const [country] = useState('Nigeria')
   const [adminUnit, setAdminUnit] = useState('')
-  const [selectedIndicators, setSelectedIndicators] = useState([])
+  const [selectedIndicators, setSelectedIndicators] = useState(['evapotranspiration'])
   const [waterBalanceMetrics, setWaterBalanceMetrics] = useState(['water_supply', 'water_demand', 'water_deficit'])
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [startDate, setStartDate] = useState('2025-05-01')
+  const [endDate, setEndDate] = useState('2025-08-01')
   const [outputFormat, setOutputFormat] = useState('CSV')
   const [description, setDescription] = useState('')
 
-  // Validation & Feedback State
+  // Processing & State
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState({})
-  const [validatedSummary, setValidatedSummary] = useState(null)
+  const [apiErrorMessage, setApiErrorMessage] = useState(null)
+  const [results, setResults] = useState(null)
+  const [requestMetadata, setRequestMetadata] = useState(null)
+
+  // Fetch actual administrative units from backend on mount
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadAdminUnits() {
+      try {
+        const units = await fetchAdminUnits()
+        if (isMounted && Array.isArray(units) && units.length > 0) {
+          // Normalize backend administrative units structure
+          const formatted = units.map((u) => ({
+            id: u.admin_id,
+            name: u.admin_name,
+            country: u.country_name || 'Nigeria',
+            code: u.country_code || 'NGA',
+          }))
+          setAdminUnitsList(formatted)
+        }
+      } catch {
+        // If backend is offline or loading, keep the canonical 37 Nigerian units
+      }
+    }
+
+    loadAdminUnits()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  // Check which indicators are selected
+  const hasEvapotranspiration = selectedIndicators.includes('evapotranspiration')
+  const nonIntegratedSelected = selectedIndicators.filter((id) => id !== 'evapotranspiration')
+  const hasNonIntegrated = nonIntegratedSelected.length > 0
+  const isWaterBalanceActive = selectedIndicators.includes('water_balance')
 
   // Toggle Indicator Selection
   const handleToggleIndicator = (indicatorId) => {
@@ -22,7 +65,6 @@ export default function DataRequest() {
       const exists = prev.includes(indicatorId)
       const updated = exists ? prev.filter((id) => id !== indicatorId) : [...prev, indicatorId]
 
-      // Reset errors for indicator field if user selects one
       if (updated.length > 0 && errors.indicators) {
         setErrors((prevErr) => ({ ...prevErr, indicators: null }))
       }
@@ -30,8 +72,7 @@ export default function DataRequest() {
       return updated
     })
 
-    // Dismiss existing validation summary on form change
-    if (validatedSummary) setValidatedSummary(null)
+    if (apiErrorMessage) setApiErrorMessage(null)
   }
 
   // Toggle Water Balance Metric
@@ -46,24 +87,24 @@ export default function DataRequest() {
 
       return updated
     })
-
-    if (validatedSummary) setValidatedSummary(null)
   }
 
   // Reset Form
   const handleReset = () => {
     setAdminUnit('')
-    setSelectedIndicators([])
+    setSelectedIndicators(['evapotranspiration'])
     setWaterBalanceMetrics(['water_supply', 'water_demand', 'water_deficit'])
-    setStartDate('')
-    setEndDate('')
+    setStartDate('2025-05-01')
+    setEndDate('2025-08-01')
     setOutputFormat('CSV')
     setDescription('')
     setErrors({})
-    setValidatedSummary(null)
+    setApiErrorMessage(null)
+    setResults(null)
+    setRequestMetadata(null)
   }
 
-  // Frontend Form Validation (No API calls or simulated backend responses)
+  // Frontend Form Validation
   const validateForm = () => {
     const newErrors = {}
 
@@ -75,11 +116,9 @@ export default function DataRequest() {
     // 2. Indicator Validation
     if (selectedIndicators.length === 0) {
       newErrors.indicators = 'Select at least one agricultural water indicator.'
-    }
-
-    // If Water Balance is selected, at least one metric must be chosen
-    if (selectedIndicators.includes('water_balance') && waterBalanceMetrics.length === 0) {
-      newErrors.waterBalanceMetrics = 'Select at least one metric for Water Balance (Supply, Demand, or Deficit).'
+    } else if (!hasEvapotranspiration) {
+      newErrors.indicators =
+        'Stage 3 supports live backend data retrieval for Evapotranspiration only. Please select Evapotranspiration to submit.'
     }
 
     // 3. Date Validation
@@ -102,50 +141,80 @@ export default function DataRequest() {
     return Object.keys(newErrors).length === 0
   }
 
-  // Form Submission Handler
-  const handleSubmit = (e) => {
+  // Form Submission Handler calling live backend API
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    setValidatedSummary(null)
+    setApiErrorMessage(null)
+
+    // Prevent duplicate submissions
+    if (isSubmitting) return
 
     const isValid = validateForm()
     if (!isValid) {
-      // Scroll to top of form or first error
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
-    // Prepare human-readable summary of the validated inputs
-    const adminUnitObj = NIGERIA_ADMIN_UNITS.find((u) => u.id === adminUnit)
+    setIsSubmitting(true)
+
+    // Identify selected administrative unit name
+    const unitObj = adminUnitsList.find((u) => u.id === adminUnit)
     const adminLabel = adminUnit === 'ALL'
-      ? 'All Administrative Units (National Scope - 37 Units)'
-      : adminUnitObj
-        ? `${adminUnitObj.name} (${adminUnitObj.id})`
+      ? 'All Administrative Units (National Scope)'
+      : unitObj
+        ? `${unitObj.name} (${unitObj.id})`
         : adminUnit
 
-    const indicatorNames = selectedIndicators.map((id) => {
-      const ind = INDICATOR_DEFINITIONS.find((d) => d.id === id)
-      if (id === 'water_balance') {
-        const metricsStr = waterBalanceMetrics
-          .map((m) => m.replace('water_', '').toUpperCase())
-          .join(', ')
-        return `${ind ? ind.name : id} [${metricsStr}]`
-      }
-      return ind ? ind.name : id
-    })
+    try {
+      // Call actual R Plumber backend endpoint: GET /api/evapotranspiration
+      const data = await fetchEvapotranspiration({
+        admin_id: adminUnit,
+        start_date: startDate,
+        end_date: endDate,
+      })
 
-    setValidatedSummary({
-      country,
-      administrativeArea: adminLabel,
-      indicators: indicatorNames,
-      dateRange: `${startDate} to ${endDate}`,
-      outputFormat,
-      description: description.trim() || 'None provided',
-    })
+      // Store response and metadata in state
+      setResults(data)
+      setRequestMetadata({
+        adminId: adminUnit === 'ALL' ? '' : adminUnit,
+        adminName: adminLabel,
+        startDate,
+        endDate,
+        outputFormat,
+        description: description.trim(),
+      })
 
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      setApiErrorMessage(err.message || 'An unexpected error occurred while contacting the server.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const isWaterBalanceActive = selectedIndicators.includes('water_balance')
+  // If results have been successfully received, display the results view
+  if (results !== null && requestMetadata !== null) {
+    return (
+      <div className="data-request-form-container">
+        <div className="page-header-block">
+          <h1 className="page-main-heading">Data Delivery Results</h1>
+          <p className="page-sub-heading">
+            Review the delivered evapotranspiration dataset and export to CSV.
+          </p>
+        </div>
+
+        <EvapotranspirationResults
+          records={results}
+          requestParams={requestMetadata}
+          onReset={() => {
+            setResults(null)
+            setRequestMetadata(null)
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="data-request-form-container">
@@ -153,12 +222,32 @@ export default function DataRequest() {
       <div className="page-header-block">
         <h1 className="page-main-heading">Data Request</h1>
         <p className="page-sub-heading">
-          Configure a structured agricultural water data request by specifying target geography,
-          indicators, observation dates, and desired format.
+          Configure a structured agricultural water data request. Connected to the live
+          <strong> Evapotranspiration API</strong> (<code>GET /api/evapotranspiration</code>).
         </p>
       </div>
 
-      {/* Validation Error Summary Banner */}
+      {/* Backend / Network Error Banner */}
+      {apiErrorMessage && (
+        <div className="validation-error-summary-banner" role="alert">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div>
+            <strong style={{ fontSize: '0.95rem' }}>Backend API Communication Notice:</strong>
+            <p style={{ marginTop: '0.25rem', fontSize: '0.86rem', lineHeight: 1.45 }}>
+              {apiErrorMessage}
+            </p>
+            <p style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: '#7F1D1D' }}>
+              Ensure that the R Plumber backend service is running locally on <code>http://127.0.0.1:8000</code>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Form Validation Errors Banner */}
       {Object.keys(errors).length > 0 && (
         <div className="validation-error-summary-banner" role="alert">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
@@ -181,49 +270,43 @@ export default function DataRequest() {
         </div>
       )}
 
-      {/* Validated Request Summary Notice (No API dispatch in this stage) */}
-      {validatedSummary && (
-        <div className="submission-success-banner" role="status">
-          <div className="success-banner-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-            Form Validation Passed
+      {/* Clear Informational Notice for Non-Integrated Indicators */}
+      {hasNonIntegrated && (
+        <div
+          style={{
+            backgroundColor: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: 'var(--radius-md)',
+            padding: '1rem 1.25rem',
+            color: '#1E40AF',
+            fontSize: '0.86rem',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '0.75rem',
+          }}
+          role="status"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          <div>
+            <strong>Indicator Integration Status:</strong>
+            <p style={{ marginTop: '0.2rem' }}>
+              You have selected indicators (
+              <em>
+                {nonIntegratedSelected
+                  .map((id) => INDICATOR_DEFINITIONS.find((d) => d.id === id)?.name || id)
+                  .join(', ')}
+              </em>
+              ) that are scheduled for subsequent stages. Currently, only{' '}
+              <strong>Evapotranspiration</strong> is connected to the live backend API.
+              {hasEvapotranspiration
+                ? ' Submitting this form will query and retrieve live records for Evapotranspiration only.'
+                : ' Please select Evapotranspiration to execute a live data request.'}
+            </p>
           </div>
-          <p className="success-banner-body">
-            All required data parameters have been validated on the client.
-            <em> Note: In accordance with Stage 2 specifications, API transmission and backend data retrieval will be connected in subsequent stages.</em>
-          </p>
-
-          <table className="summary-details-table">
-            <tbody>
-              <tr>
-                <td>Target Country</td>
-                <td>{validatedSummary.country}</td>
-              </tr>
-              <tr>
-                <td>Administrative Area</td>
-                <td>{validatedSummary.administrativeArea}</td>
-              </tr>
-              <tr>
-                <td>Selected Indicators</td>
-                <td>{validatedSummary.indicators.join('; ')}</td>
-              </tr>
-              <tr>
-                <td>Observation Date Range</td>
-                <td>{validatedSummary.dateRange}</td>
-              </tr>
-              <tr>
-                <td>Selected Format</td>
-                <td><strong>{validatedSummary.outputFormat}</strong></td>
-              </tr>
-              <tr>
-                <td>Request Description</td>
-                <td>{validatedSummary.description}</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       )}
 
@@ -277,13 +360,13 @@ export default function DataRequest() {
                     if (errors.adminUnit) {
                       setErrors((prev) => ({ ...prev, adminUnit: null }))
                     }
-                    if (validatedSummary) setValidatedSummary(null)
                   }}
+                  disabled={isSubmitting}
                 >
                   <option value="">-- Select an Administrative Area --</option>
                   <option value="ALL">All Administrative Units (National Scope &bull; 37 Divisions)</option>
                   <optgroup label="Nigerian States & Federal Capital Territory (37 Units)">
-                    {NIGERIA_ADMIN_UNITS.map((unit) => (
+                    {adminUnitsList.map((unit) => (
                       <option key={unit.id} value={unit.id}>
                         {unit.name} ({unit.id})
                       </option>
@@ -301,7 +384,7 @@ export default function DataRequest() {
                   </span>
                 ) : (
                   <span className="form-field-hint">
-                    Choose an individual state or select all 37 administrative units.
+                    Select an administrative unit ID to query the backend database.
                   </span>
                 )}
               </div>
@@ -316,7 +399,7 @@ export default function DataRequest() {
               <span className="form-section-number-tag">Section 2</span>
               <h2 className="form-section-title">Indicator Selection</h2>
               <p className="form-section-instruction">
-                Select one or multiple agricultural water indicators to include in the data package.
+                Select one or multiple agricultural water indicators. Evapotranspiration is integrated with live backend delivery.
               </p>
             </div>
 
@@ -335,11 +418,16 @@ export default function DataRequest() {
             <div className="indicator-cards-grid">
               {INDICATOR_DEFINITIONS.map((indicator) => {
                 const isSelected = selectedIndicators.includes(indicator.id)
+                const isIntegrated = indicator.id === 'evapotranspiration'
+
                 return (
                   <div
                     key={indicator.id}
                     className={`indicator-select-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => handleToggleIndicator(indicator.id)}
+                    onClick={() => !isSubmitting && handleToggleIndicator(indicator.id)}
+                    style={{
+                      borderLeft: isIntegrated ? '4px solid var(--color-secondary-water)' : undefined,
+                    }}
                   >
                     <div className="indicator-card-top-row">
                       <label
@@ -351,11 +439,42 @@ export default function DataRequest() {
                           className="custom-checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleIndicator(indicator.id)}
+                          disabled={isSubmitting}
                           aria-label={`Select ${indicator.name}`}
                         />
                         <span>{indicator.name}</span>
                       </label>
-                      <span className="indicator-code-badge">{indicator.code}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        {isIntegrated ? (
+                          <span
+                            style={{
+                              fontSize: '0.65rem',
+                              fontWeight: 700,
+                              backgroundColor: 'var(--color-light-mint)',
+                              color: 'var(--color-secondary-water)',
+                              padding: '0.1rem 0.35rem',
+                              borderRadius: '3px',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            Live API
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              backgroundColor: 'var(--color-bg-page)',
+                              color: 'var(--color-text-secondary)',
+                              padding: '0.1rem 0.35rem',
+                              borderRadius: '3px',
+                            }}
+                          >
+                            Next Stage
+                          </span>
+                        )}
+                        <span className="indicator-code-badge">{indicator.code}</span>
+                      </div>
                     </div>
 
                     <p className="indicator-card-desc">{indicator.description}</p>
@@ -376,7 +495,7 @@ export default function DataRequest() {
                     Water Balance Metric Options
                   </h3>
                   <p className="metrics-panel-subtitle">
-                    Select the specific components to retrieve for the water balance calculation:
+                    Select the specific components to retrieve for the water balance calculation (scheduled for integration):
                   </p>
                 </div>
 
@@ -408,6 +527,7 @@ export default function DataRequest() {
                           className="custom-checkbox"
                           checked={isMetricSelected}
                           onChange={() => handleToggleWaterBalanceMetric(metric.id)}
+                          disabled={isSubmitting}
                         />
                         <span>
                           <strong>{metric.label}</strong>
@@ -431,7 +551,7 @@ export default function DataRequest() {
               <span className="form-section-number-tag">Section 3</span>
               <h2 className="form-section-title">Date Selection</h2>
               <p className="form-section-instruction">
-                Specify the temporal observation period for the requested indicators.
+                Specify the temporal observation period for evapotranspiration data retrieval.
               </p>
             </div>
 
@@ -452,8 +572,8 @@ export default function DataRequest() {
                     if (errors.startDate || errors.dateRange) {
                       setErrors((prev) => ({ ...prev, startDate: null, dateRange: null }))
                     }
-                    if (validatedSummary) setValidatedSummary(null)
                   }}
+                  disabled={isSubmitting}
                 />
                 {errors.startDate && (
                   <span className="form-field-error">
@@ -484,8 +604,8 @@ export default function DataRequest() {
                     if (errors.endDate || errors.dateRange) {
                       setErrors((prev) => ({ ...prev, endDate: null, dateRange: null }))
                     }
-                    if (validatedSummary) setValidatedSummary(null)
                   }}
+                  disabled={isSubmitting}
                 />
                 {errors.endDate && (
                   <span className="form-field-error">
@@ -520,7 +640,7 @@ export default function DataRequest() {
               <span className="form-section-number-tag">Section 4</span>
               <h2 className="form-section-title">Output Format</h2>
               <p className="form-section-instruction">
-                Select your preferred data delivery structure.
+                Select your preferred data delivery structure (CSV download enabled).
               </p>
             </div>
 
@@ -530,19 +650,19 @@ export default function DataRequest() {
                   id: 'CSV',
                   label: 'CSV',
                   subtitle: 'Comma-Separated Values',
-                  desc: 'Standard tabular format for spreadsheets, R, Python pandas, and statistical software.',
+                  desc: 'Standard tabular format for spreadsheets, R, and statistical software (Direct download enabled).',
                 },
                 {
                   id: 'JSON',
                   label: 'JSON',
                   subtitle: 'JavaScript Object Notation',
-                  desc: 'Lightweight structured format for API consumption, applications, and web services.',
+                  desc: 'Structured format returned natively by the Plumber REST API endpoint.',
                 },
                 {
                   id: 'GeoJSON',
                   label: 'GeoJSON',
                   subtitle: 'Geographic Data Format',
-                  desc: 'Spatial format embedding administrative boundary polygons alongside indicator metrics for GIS analysis.',
+                  desc: 'Spatial format embedding administrative boundary polygons (Scheduled for spatial map integration).',
                 },
               ].map((format) => {
                 const isFormatSelected = outputFormat === format.id
@@ -558,10 +678,8 @@ export default function DataRequest() {
                         value={format.id}
                         className="custom-radio"
                         checked={isFormatSelected}
-                        onChange={() => {
-                          setOutputFormat(format.id)
-                          if (validatedSummary) setValidatedSummary(null)
-                        }}
+                        onChange={() => setOutputFormat(format.id)}
+                        disabled={isSubmitting}
                       />
                       <div>
                         <div className="format-label-title">{format.label}</div>
@@ -585,7 +703,7 @@ export default function DataRequest() {
               <span className="form-section-number-tag">Section 5</span>
               <h2 className="form-section-title">Additional Information</h2>
               <p className="form-section-instruction">
-                Provide optional context or research objectives for record-keeping and audit logs.
+                Provide optional context or research objectives for record-keeping.
               </p>
             </div>
 
@@ -602,10 +720,8 @@ export default function DataRequest() {
                 className="form-field-textarea"
                 placeholder="e.g., Irrigation scheduling research, agricultural drought vulnerability assessment, or watershed water balance monitoring..."
                 value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value)
-                  if (validatedSummary) setValidatedSummary(null)
-                }}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={isSubmitting}
               />
               <span className="form-field-hint">
                 Briefly describe the research purpose or operational project reference.
@@ -621,6 +737,7 @@ export default function DataRequest() {
               type="button"
               className="btn btn-secondary"
               onClick={handleReset}
+              disabled={isSubmitting}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -632,11 +749,22 @@ export default function DataRequest() {
             <button
               type="submit"
               className="btn btn-primary"
+              disabled={isSubmitting}
+              style={{ minWidth: '220px' }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              <span>Submit Data Request</span>
+              {isSubmitting ? (
+                <>
+                  <span className="spinner" />
+                  <span>Querying Backend API...</span>
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>Submit Data Request</span>
+                </>
+              )}
             </button>
           </div>
 
