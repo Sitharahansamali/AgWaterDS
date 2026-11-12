@@ -18,7 +18,6 @@ export async function fetchAdminUnits() {
   }
   return data
 }
-
 /**
  * Retrieves evapotranspiration observations from the backend.
  * Endpoint: GET /api/evapotranspiration
@@ -54,7 +53,6 @@ export async function fetchEvapotranspiration({ admin_id, start_date, end_date }
 
   return data
 }
-
 /**
  * Retrieves soil moisture observations from the backend.
  * Endpoint: GET /api/soil-moisture
@@ -89,7 +87,6 @@ export async function fetchSoilMoisture({ admin_id, start_date, end_date }) {
 
   return data
 }
-
 function buildIndicatorQuery({ admin_id, start_date, end_date }) {
   const queryParams = new URLSearchParams()
 
@@ -234,3 +231,94 @@ export function downloadCSV(records, filename = 'agwaterds_export.csv', customHe
   // Clean up the URL object
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+
+/**
+ * Retrieves all Nigerian administrative boundaries as GeoJSON.
+ * Endpoint: GET /api/map/admin-units
+ */
+export async function fetchAdminBoundariesGeoJSON() {
+  const data = await apiRequest('/api/map/admin-units')
+
+  if (
+    !data ||
+    data.type !== 'FeatureCollection' ||
+    !Array.isArray(data.features)
+  ) {
+    throw new Error('Invalid GeoJSON response for administrative boundaries.')
+  }
+
+  return data
+}
+
+/**
+ * Retrieves spatial indicator data joined with administrative boundaries.
+ * Endpoint: GET /api/map/indicator
+ *
+ * @param {object} params
+ * @param {string} params.indicator
+ * @param {string} params.date - YYYY-MM-DD
+ * @param {string} [params.admin_id]
+ * @param {string} [params.metric] - Required for water_balance
+ */
+export async function fetchIndicatorMap({
+  indicator,
+  date,
+  admin_id,
+  metric,
+}) {
+  const allowedIndicators = [
+    'evapotranspiration',
+    'soil_moisture',
+    'water_balance',
+    'crop_water_demand',
+  ]
+
+  if (!allowedIndicators.includes(indicator)) {
+    throw new Error('Invalid indicator selected.')
+  }
+
+  if (!date) {
+    throw new Error('An observation date is required.')
+  }
+
+  if (indicator === 'water_balance') {
+    const allowedMetrics = [
+      'water_supply',
+      'water_demand',
+      'water_deficit',
+    ]
+
+    if (!allowedMetrics.includes(metric)) {
+      throw new Error('Please select a valid water balance metric.')
+    }
+  }
+
+  const queryParams = new URLSearchParams({
+    indicator,
+    date,
+  })
+
+  if (admin_id && admin_id !== 'ALL') {
+    queryParams.append('admin_id', admin_id)
+  }
+
+  if (metric) {
+    queryParams.append('metric', metric)
+  }
+
+  const data = await apiRequest(
+    `/api/map/indicator?${queryParams.toString()}`
+  )
+
+  if (
+    !data ||
+    data.type !== 'FeatureCollection' ||
+    !Array.isArray(data.features)
+  ) {
+    throw new Error('Invalid GeoJSON response for indicator map.')
+  }
+
+  return data
+}
+

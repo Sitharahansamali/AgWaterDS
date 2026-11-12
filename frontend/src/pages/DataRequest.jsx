@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import { NIGERIA_ADMIN_UNITS, INDICATOR_DEFINITIONS } from '../data/administrativeUnits'
-import { fetchAdminUnits, requestIndicators, downloadJSON } from '../services/dataService'
+import {
+  fetchAdminUnits,
+  requestIndicators,
+  fetchIndicatorMap,
+  downloadJSON,
+} from '../services/dataService'
 import IndicatorResults from '../components/results/IndicatorResults'
 
 const INTEGRATED_INDICATOR_IDS = ['evapotranspiration', 'soil_moisture', 'water_balance', 'crop_water_demand']
@@ -25,6 +30,10 @@ export default function DataRequest() {
   const [apiErrorMessage, setApiErrorMessage] = useState(null)
   const [results, setResults] = useState(null)
   const [requestMetadata, setRequestMetadata] = useState(null)
+
+  // Spatial Map State
+  const [mapResults, setMapResults] = useState({})
+  const [mapLoading, setMapLoading] = useState(false)
 
   // Fetch actual administrative units from backend on mount
   useEffect(() => {
@@ -103,6 +112,8 @@ export default function DataRequest() {
     setApiErrorMessage(null)
     setResults(null)
     setRequestMetadata(null)
+    setMapResults({})
+    setMapLoading(false)
   }
 
   // Frontend Form Validation
@@ -141,57 +152,130 @@ export default function DataRequest() {
     return Object.keys(newErrors).length === 0
   }
 
-  // Form Submission Handler calling live backend APIs
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setApiErrorMessage(null)
 
-    // Prevent duplicate submissions
-    if (isSubmitting) return
+const handleSubmit = async (e) => {
+  e.preventDefault()
+  setApiErrorMessage(null)
 
-    const isValid = validateForm()
-    if (!isValid) {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      return
-    }
+  if (isSubmitting) return
 
-    setIsSubmitting(true)
-
-    // Identify selected administrative unit name
-    const unitObj = adminUnitsList.find((u) => u.id === adminUnit)
-    const adminLabel = adminUnit === 'ALL'
-      ? 'All Administrative Units (National Scope)'
-      : unitObj
-        ? `${unitObj.name} (${unitObj.id})`
-        : adminUnit
-
-    try {
-      const combinedResults = await requestIndicators({
-        selectedIndicators,
-        params: { admin_id: adminUnit, start_date: startDate, end_date: endDate },
-      })
-
-      // Store responses and metadata in state
-      setResults(combinedResults)
-      setRequestMetadata({
-        adminId: adminUnit === 'ALL' ? '' : adminUnit,
-        adminName: adminLabel,
-        startDate,
-        endDate,
-        outputFormat,
-        description: description.trim(),
-        selectedIndicators,
-        waterBalanceMetrics: isWaterBalanceActive ? waterBalanceMetrics : [],
-      })
-
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch (err) {
-      setApiErrorMessage(err.message || 'An unexpected error occurred while contacting the server.')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    } finally {
-      setIsSubmitting(false)
-    }
+  const isValid = validateForm()
+  if (!isValid) {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    return
   }
+
+  setIsSubmitting(true)
+  setMapLoading(false)
+  setMapResults({})
+
+  const unitObj = adminUnitsList.find((u) => u.id === adminUnit)
+
+  const adminLabel = adminUnit === 'ALL'
+    ? 'All Administrative Units (National Scope)'
+    : unitObj
+      ? `${unitObj.name} (${unitObj.id})`
+      : adminUnit
+
+  try {
+    // 1. Retrieve tabular indicator data
+    const combinedResults = await requestIndicators({
+      selectedIndicators,
+      params: {
+        admin_id: adminUnit,
+        start_date: startDate,
+        end_date: endDate,
+      },
+    })
+
+    // Store table results immediately
+    setResults(combinedResults)
+
+    // Store request metadata
+    const metadata = {
+      adminId: adminUnit === 'ALL' ? '' : adminUnit,
+      adminName: adminLabel,
+      startDate,
+      endDate,
+      outputFormat,
+      description: description.trim(),
+      selectedIndicators,
+      waterBalanceMetrics: isWaterBalanceActive
+        ? waterBalanceMetrics
+        : [],
+    }
+
+    setRequestMetadata(metadata)
+
+    // 2. Prepare independent spatial map requests
+    setMapLoading(true)
+
+    const mapRequests = selectedIndicators.flatMap((indicatorId) => {
+      if (indicatorId === 'water_balance') {
+        return metadata.waterBalanceMetrics.map((metric) => ({
+          indicatorId,
+          metric,
+          key: metric,
+        }))
+      }
+
+      return [{
+        indicatorId,
+        metric: null,
+        key: indicatorId,
+      }]
+    })
+
+    // 3. Retrieve all map responses independently
+    const mapResponses = await Promise.allSettled(
+      mapRequests.map(({ indicatorId, metric }) =>
+        fetchIndicatorMap({
+          indicator: indicatorId,
+          date: endDate,
+          admin_id: adminUnit,
+          metric: metric || undefined,
+        })
+      )
+    )
+
+    // 4. Store successful and failed map responses
+    const spatialResults = {}
+
+    mapResponses.forEach((response, index) => {
+      const request = mapRequests[index]
+
+      if (!spatialResults[request.indicatorId]) {
+        spatialResults[request.indicatorId] = {}
+      }
+
+      if (response.status === 'fulfilled') {
+        spatialResults[request.indicatorId][request.key] = {
+          status: 'completed',
+          data: response.value,
+        }
+      } else {
+        spatialResults[request.indicatorId][request.key] = {
+          status: 'failed',
+          error: response.reason?.message || 'Map data could not be retrieved.',
+        }
+      }
+    })
+
+    setMapResults(spatialResults)
+
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+
+  } catch (err) {
+    setApiErrorMessage(
+      err.message || 'An unexpected error occurred while contacting the server.'
+    )
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  } finally {
+    setIsSubmitting(false)
+    setMapLoading(false)
+  }
+}
+
 
   // If results have been received, display the combined results view.
   if (results !== null && requestMetadata !== null) {
@@ -226,7 +310,16 @@ export default function DataRequest() {
         </div>
         {requestMetadata.selectedIndicators.map((indicatorId) => {
           const indicator = INDICATOR_DEFINITIONS.find((item) => item.id === indicatorId)
-          return <IndicatorResults key={indicatorId} indicator={indicator} result={results[indicatorId]} requestParams={requestMetadata} metricIds={indicatorId === 'water_balance' ? requestMetadata.waterBalanceMetrics : []} />
+          return <IndicatorResults
+            key={indicatorId}
+            indicator={indicator}
+            result={results[indicatorId]}
+            requestParams={requestMetadata}
+            metricIds={indicatorId === 'water_balance' ? requestMetadata.waterBalanceMetrics : []}
+            mapResults={mapResults[indicatorId] || {}}
+            mapLoading={mapLoading}
+            mapDate={requestMetadata.endDate}
+          />
         })}
       </div>
     )

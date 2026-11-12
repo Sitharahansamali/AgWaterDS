@@ -1,4 +1,5 @@
 import { downloadCSV } from '../../services/dataService'
+import IndicatorMap from '../../maps/IndicatorMap'
 
 const STATUS_LABELS = {
   processing: 'Processing',
@@ -19,21 +20,49 @@ const FIELD_LABELS = {
   data_source: 'Data Source',
 }
 
+const METRIC_LABELS = {
+  water_supply: 'Water Supply',
+  water_demand: 'Water Demand',
+  water_deficit: 'Water Deficit',
+}
+
 function formatValue(value) {
   return typeof value === 'number' ? value.toFixed(3) : value ?? ''
 }
 
-export default function IndicatorResults({ indicator, result, requestParams, metricIds = [] }) {
+export default function IndicatorResults({
+  indicator,
+  result,
+  requestParams,
+  metricIds = [],
+  mapResults = {},
+  mapLoading = false,
+  mapDate,
+}) {
   const records = result?.records || []
+  const isWaterBalance = indicator.id === 'water_balance'
   const columns = records.length > 0
-    ? Object.keys(records[0]).filter((field) => !metricIds.length || !['water_supply', 'water_demand', 'water_deficit'].includes(field) || metricIds.includes(field))
+    ? Object.keys(records[0]).filter((field) => (
+        !metricIds.length
+        || !['water_supply', 'water_demand', 'water_deficit'].includes(field)
+        || metricIds.includes(field)
+      ))
     : []
-  const statusLabel = STATUS_LABELS[result?.status] || 'Pending'
-  const filenameBase = indicator.id.replaceAll('_', '-')
+  const mapsToDisplay = isWaterBalance
+    ? metricIds.map((metric) => ({
+        key: metric,
+        name: METRIC_LABELS[metric] || metric,
+        result: mapResults[metric],
+      }))
+    : [{ key: indicator.id, name: indicator.name, result: mapResults[indicator.id] }]
   const adminPart = requestParams.adminId ? requestParams.adminId.toLowerCase() : 'all'
 
   const handleDownload = () => {
-    downloadCSV(records, `agwaterds_${filenameBase}_${adminPart}_${requestParams.startDate}_to_${requestParams.endDate}.csv`, columns)
+    downloadCSV(
+      records,
+      `agwaterds_${indicator.id.replaceAll('_', '-')}_${adminPart}_${requestParams.startDate}_to_${requestParams.endDate}.csv`,
+      columns
+    )
   }
 
   return (
@@ -43,7 +72,7 @@ export default function IndicatorResults({ indicator, result, requestParams, met
           <div>
             <div className="results-badge-group">
               <span className={result?.status === 'failed' ? 'status-tag-error' : 'status-tag-success'}>
-                {statusLabel}
+                {STATUS_LABELS[result?.status] || 'Pending'}
               </span>
               <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
                 Returned <strong>{records.length}</strong> {records.length === 1 ? 'record' : 'records'}
@@ -70,6 +99,27 @@ export default function IndicatorResults({ indicator, result, requestParams, met
 
       <div className="results-table-card">
         <div className="results-table-header-bar">
+          <h3 className="results-table-title">Geographic Distribution</h3>
+          <span style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Map observation date: {mapDate}</span>
+        </div>
+        {mapsToDisplay.map(({ key, name, result: mapResult }) => (
+          <div key={key} style={{ padding: '1rem' }}>
+            {isWaterBalance && <h3 style={{ marginBottom: '1rem', color: 'var(--color-primary-teal)' }}>{name}</h3>}
+            {mapLoading ? (
+              <div className="indicator-map-message" role="status">Loading map data...</div>
+            ) : mapResult?.status === 'completed' ? (
+              <IndicatorMap geojson={mapResult.data} indicatorName={name} />
+            ) : (
+              <div className="indicator-map-message" role="status">
+                {mapResult?.error ? `Map unavailable: ${mapResult.error}` : 'Map data is not available for this selection.'}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="results-table-card">
+        <div className="results-table-header-bar">
           <h3 className="results-table-title">Returned Records</h3>
           <span style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>Units and source are returned by the backend</span>
         </div>
@@ -82,9 +132,11 @@ export default function IndicatorResults({ indicator, result, requestParams, met
           <div className="results-table-wrapper">
             <table className="scientific-data-table">
               <thead><tr>{columns.map((field) => <th key={field}>{FIELD_LABELS[field] || field}</th>)}</tr></thead>
-              <tbody>{records.map((record, index) => <tr key={`${record.admin_id || indicator.id}-${record.observation_date || index}-${index}`}>
-                {columns.map((field) => <td key={field}>{formatValue(record[field])}</td>)}
-              </tr>)}</tbody>
+              <tbody>{records.map((record, index) => (
+                <tr key={`${record.admin_id || indicator.id}-${record.observation_date || index}-${index}`}>
+                  {columns.map((field) => <td key={field}>{formatValue(record[field])}</td>)}
+                </tr>
+              ))}</tbody>
             </table>
           </div>
         )}
