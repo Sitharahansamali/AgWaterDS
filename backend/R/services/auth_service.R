@@ -113,13 +113,23 @@ register_user <- function(
     password
 ) {
 
+  if (
+    is.null(full_name) ||
+    length(full_name) != 1 ||
+    is.na(full_name)
+  ) {
+    auth_error("Please provide a valid full name.")
+  }
+
   full_name <- trimws(as.character(full_name))
 
   if (
     length(full_name) != 1 ||
     is.na(full_name) ||
     !nzchar(full_name) ||
-    nchar(full_name) > 150
+    nchar(full_name, type = "chars") > 150 ||
+    !grepl("^[[:alpha:]][[:alpha:].' -]*([[:alpha:]])?$", full_name) ||
+    !grepl("[[:alpha:]]", full_name)
   ) {
     auth_error("Please provide a valid full name.")
   }
