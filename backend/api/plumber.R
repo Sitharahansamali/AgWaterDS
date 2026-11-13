@@ -101,7 +101,25 @@ function() {
 #* Retrieve administrative units
 #* Get all administrative units
 #* @get /api/admin-units
-function(res) {
+function(req, res) {
+
+  # Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (res$status != 500L) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Authentication required."
+      ))
+    }
+
+    return(list(
+      status = "error",
+      message = "Unable to validate authentication."
+    ))
+  }
 
   tryCatch({
 
@@ -139,7 +157,26 @@ function(res) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get evapotranspiration data
 #* @get /api/evapotranspiration
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(req,res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -168,7 +205,26 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get soil moisture data
 #* @get /api/soil-moisture
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -197,7 +253,26 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get water balance data
 #* @get /api/water-balance
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -227,7 +302,26 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get crop water demand data
 #* @get /api/crop-water-demand
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -254,7 +348,25 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* Retrieve administrative boundaries as GeoJSON
 #* @get /api/map/admin-units
 #* @serializer contentType list(type="application/geo+json")
-function(res) {
+function(req, res) {
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -283,11 +395,30 @@ function(res) {
 #* @param metric Required for water_balance
 #* @get /api/map/indicator
 #* @serializer contentType list(type="application/geo+json")
-function(res,
+function(req, res,
          indicator,
          date,
          admin_id = NULL,
          metric = NULL) {
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -317,7 +448,7 @@ function(res,
 # AUTHENTICATION API
 # ==========================================
 
-
+#* Authenticate a user
 #* Register a new AgWaterDS researcher
 #* @post /api/auth/register
 #* @parser json
@@ -419,6 +550,63 @@ function(req, res) {
     }
 
     api_error_response(e, res)
+  })
+}
+
+
+
+# ==========================================
+# AUTHENTICATION HELPER
+# ==========================================
+
+authenticate_request <- function(req, res) {
+
+  auth_header <- req$HTTP_AUTHORIZATION
+
+  # Check Authorization header
+  if (
+    is.null(auth_header) ||
+    length(auth_header) != 1 ||
+    !grepl("^Bearer [a-f0-9]{64}$", auth_header)
+  ) {
+    res$status <- 401L
+
+    return(NULL)
+  }
+
+  token <- sub("^Bearer ", "", auth_header)
+
+  con <- NULL
+
+  tryCatch({
+
+    con <- connect_db()
+
+    user <- validate_session(con, token)
+
+    if (is.null(user)) {
+      res$status <- 401L
+      return(NULL)
+    }
+
+    user
+
+  }, error = function(e) {
+
+    message(
+      "Authentication validation error: ",
+      conditionMessage(e)
+    )
+
+    res$status <- 500L
+    NULL
+
+  }, finally = {
+
+    if (!is.null(con)) {
+      try(DBI::dbDisconnect(con), silent = TRUE)
+    }
+
   })
 }
 
