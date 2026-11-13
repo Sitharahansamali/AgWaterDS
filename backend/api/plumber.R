@@ -38,6 +38,7 @@ if (nzchar(configured_project_root)) {
 source(file.path(project_root, "backend/R/database/db_connection.R"))
 source(file.path(project_root, "backend/R/database/indicator_queries.R"))
 source(file.path(project_root, "backend/R/services/indicator_service.R"))
+source(file.path(project_root, "backend/R/services/auth_service.R"))
 
 source(file.path(
   project_root,
@@ -308,5 +309,115 @@ function(res,
 
     api_error_response(e, res)
 
+  })
+}
+
+
+# ==========================================
+# AUTHENTICATION API
+# ==========================================
+
+
+#* Register a new AgWaterDS researcher
+#* @post /api/auth/register
+#* @parser json
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    body <- req$body
+
+    if (is.null(body)) {
+      res$status <- 400L
+      return(list(status = "error", message = "Request body is required."))
+    }
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    DBI::dbBegin(con)
+
+    user <- tryCatch(
+      register_user(
+        con = con,
+        full_name = body$full_name,
+        email = body$email,
+        password = body$password
+      ),
+      error = function(e) {
+        DBI::dbRollback(con)
+        stop(e)
+      }
+    )
+
+    DBI::dbCommit(con)
+
+    res$status <- 201L
+
+    list(
+      status = "success",
+      message = "Account registered successfully.",
+      user = user
+    )
+
+  }, error = function(e) {
+
+    if (inherits(e, "agwaterds_auth_error")) {
+      res$status <- 400L
+      return(list(status = "error", message = conditionMessage(e)))
+    }
+
+    if (inherits(e, "PqException")) {
+      if (grepl("unique", conditionMessage(e), ignore.case = TRUE)) {
+        res$status <- 409L
+        return(list(status = "error", message = "An account with this email already exists."))
+      }
+    }
+
+    api_error_response(e, res)
+  })
+}
+
+
+#* Log in to AgWaterDS
+#* @post /api/auth/login
+#* @parser json
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    body <- req$body
+
+    if (is.null(body)) {
+      res$status <- 400L
+      return(list(status = "error", message = "Request body is required."))
+    }
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    result <- login_user(
+      con = con,
+      email = body$email,
+      password = body$password
+    )
+
+    list(
+      status = "success",
+      message = "Login successful.",
+      user = result$user,
+      session = result$session
+    )
+
+  }, error = function(e) {
+
+    if (inherits(e, "agwaterds_auth_error")) {
+      res$status <- 401L
+      return(list(status = "error", message = conditionMessage(e)))
+    }
+
+    api_error_response(e, res)
   })
 }
