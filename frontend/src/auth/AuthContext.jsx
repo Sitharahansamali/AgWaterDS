@@ -11,6 +11,7 @@ import {
   registerUser,
   getCurrentUser,
   logoutUser,
+  normalizeUser,
 } from '../services/authService'
 
 // Create authentication context
@@ -35,19 +36,23 @@ export function AuthProvider({ children }) {
         return
       }
 
+      const isCurrentSession = () =>
+        sessionStorage.getItem('agwaterds_token') === token
+
       try {
         const response = await getCurrentUser()
 
-        if (isMounted) {
-          setUser(response?.user ?? null)
+        if (isMounted && isCurrentSession()) {
+          setUser(normalizeUser(response?.user))
         }
       } catch (error) {
         console.error('Session validation failed:', error)
 
-        sessionStorage.removeItem('agwaterds_token')
-
-        if (isMounted) {
-          setUser(null)
+        if (isCurrentSession()) {
+          sessionStorage.removeItem('agwaterds_token')
+          if (isMounted) {
+            setUser(null)
+          }
         }
       } finally {
         if (isMounted) {
@@ -67,14 +72,16 @@ export function AuthProvider({ children }) {
   async function login(credentials) {
     const response = await loginUser(credentials)
 
-    const loggedInUser = response?.user
-
-    if (!loggedInUser) {
+    let loggedInUser
+    try {
+      loggedInUser = normalizeUser(response?.user)
+    } catch (error) {
       sessionStorage.removeItem('agwaterds_token')
-      throw new Error('Login response did not contain user details.')
+      throw error
     }
 
     setUser(loggedInUser)
+    setLoading(false)
 
     return loggedInUser
   }

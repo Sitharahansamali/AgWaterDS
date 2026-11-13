@@ -3,6 +3,25 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import '../../styles/auth.css'
 
+function getDisplayText(value, fallback) {
+  let scalar = value
+
+  while (Array.isArray(scalar)) {
+    if (scalar.length !== 1) {
+      return fallback
+    }
+    scalar = scalar[0]
+  }
+
+  const text = typeof scalar === 'string'
+    ? scalar.trim()
+    : typeof scalar === 'number' && Number.isFinite(scalar)
+      ? String(scalar)
+      : ''
+
+  return text || fallback
+}
+
 export default function Header({ onToggleMobileNav }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -37,6 +56,16 @@ export default function Header({ onToggleMobileNav }) {
     }
   }
 
+  const displayName = getDisplayText(user?.full_name, 'Authorized Access')
+  const displayRole = getDisplayText(user?.role, 'Researcher')
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join('')
+    .toUpperCase() || 'DS'
+
   return (
     <header className="app-top-header">
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -59,18 +88,18 @@ export default function Header({ onToggleMobileNav }) {
       <div className="header-user-area">
         <div className="auth-account" ref={accountRef}>
           <button type="button" className="auth-account-trigger" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen} aria-haspopup="menu">
-            <div className="user-avatar-circle">{user?.full_name?.slice(0, 2).toUpperCase() || 'DS'}</div>
+            <div className="user-avatar-circle">{initials}</div>
             <div className="user-meta-text">
-              <span className="user-name-label">{user?.full_name || 'Authorized Access'}</span>
-              <span className="user-sub-label">{user?.role || 'Researcher'}</span>
+              <span className="user-name-label">{displayName}</span>
+              <span className="user-sub-label">{displayRole}</span>
             </div>
             <span aria-hidden="true">⌄</span>
           </button>
           {menuOpen && (
             <div className="auth-account-menu" role="menu">
               <div className="auth-account-menu-header">
-                <strong>{user?.full_name || 'Authorized Access'}</strong>
-                <span>{user?.role || 'Researcher'}</span>
+                <strong>{displayName}</strong>
+                <span>{displayRole}</span>
               </div>
               <Link to="/profile" role="menuitem" onClick={() => setMenuOpen(false)}>Profile</Link>
               <button type="button" role="menuitem" onClick={async () => {
