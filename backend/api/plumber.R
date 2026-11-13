@@ -349,6 +349,7 @@ function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @get /api/map/admin-units
 #* @serializer contentType list(type="application/geo+json")
 function(req, res) {
+  
   # Step 1: Authenticate the request
   user <- authenticate_request(req, res)
 

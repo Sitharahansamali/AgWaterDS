@@ -29,8 +29,20 @@ export async function apiRequest(endpoint, options = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`
 
   const defaultHeaders = {
-    'Accept': 'application/json',
-  }
+  'Accept': 'application/json',
+    }
+
+  // Attach the session token to protected API requests
+  const token = sessionStorage.getItem('agwaterds_token')
+
+  if (token) {
+    defaultHeaders['Authorization'] = `Bearer ${token}`
+    }
+
+  // Add JSON content type when sending JSON data
+  if (options.body && typeof options.body === 'string') {
+    defaultHeaders['Content-Type'] = 'application/json'
+    }
 
   const config = {
     ...options,
