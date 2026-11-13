@@ -421,3 +421,108 @@ function(req, res) {
     api_error_response(e, res)
   })
 }
+
+
+
+# ==========================================
+# GET AUTHENTICATED USER
+# ==========================================
+
+#* Retrieve authenticated user information
+#* @get /api/auth/me
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    # Read Bearer token from Authorization header
+    auth_header <- req$HTTP_AUTHORIZATION
+
+    if (
+      is.null(auth_header) ||
+      length(auth_header) != 1 ||
+      !grepl("^Bearer [a-f0-9]{64}$", auth_header)
+    ) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Authentication required."
+      ))
+    }
+
+    token <- sub("^Bearer ", "", auth_header)
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    user <- validate_session(con, token)
+
+    if (is.null(user)) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Invalid or expired session."
+      ))
+    }
+
+    list(
+      status = "success",
+      user = user
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
+}
+
+
+
+# ==========================================
+# USER LOGOUT
+# ==========================================
+
+#* Log out the authenticated user
+#* @post /api/auth/logout
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    auth_header <- req$HTTP_AUTHORIZATION
+
+    if (
+      is.null(auth_header) ||
+      length(auth_header) != 1 ||
+      !grepl("^Bearer [a-f0-9]{64}$", auth_header)
+    ) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Authentication required."
+      ))
+    }
+
+    token <- sub("^Bearer ", "", auth_header)
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    logged_out <- logout_user(con, token)
+
+    if (!logged_out) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Invalid or already revoked session."
+      ))
+    }
+
+    list(
+      status = "success",
+      message = "Logout successful."
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
+}
