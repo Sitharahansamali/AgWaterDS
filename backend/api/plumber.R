@@ -77,6 +77,19 @@ api_error_response <- function(e, res) {
   )
 }
 
+normalize_optional_query_parameter <- function(value) {
+
+  if (
+    is.null(value) ||
+    length(value) == 0L ||
+    (length(value) == 1L && is.na(value))
+  ) {
+    return(NULL)
+  }
+
+  value
+}
+
 
 # ==========================================
 # HEALTH CHECK
@@ -157,7 +170,17 @@ function(req, res) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get evapotranspiration data
 #* @get /api/evapotranspiration
-function(req,res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
 
   # Step 1: Authenticate the request
   user <- authenticate_request(req, res)
@@ -205,7 +228,17 @@ function(req,res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get soil moisture data
 #* @get /api/soil-moisture
-function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
 
   # Step 1: Authenticate the request
   user <- authenticate_request(req, res)
@@ -253,7 +286,17 @@ function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get water balance data
 #* @get /api/water-balance
-function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
 
   # Step 1: Authenticate the request
   user <- authenticate_request(req, res)
@@ -302,7 +345,17 @@ function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get crop water demand data
 #* @get /api/crop-water-demand
-function(req, res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
 
   # Step 1: Authenticate the request
   user <- authenticate_request(req, res)
@@ -399,8 +452,11 @@ function(req, res) {
 function(req, res,
          indicator,
          date,
-         admin_id = NULL,
-         metric = NULL) {
+         admin_id = NA_character_,
+         metric = NA_character_) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  metric <- normalize_optional_query_parameter(metric)
 
   # Step 1: Authenticate the request
   user <- authenticate_request(req, res)
