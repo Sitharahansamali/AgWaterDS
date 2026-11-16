@@ -38,6 +38,7 @@ if (nzchar(configured_project_root)) {
 source(file.path(project_root, "backend/R/database/db_connection.R"))
 source(file.path(project_root, "backend/R/database/indicator_queries.R"))
 source(file.path(project_root, "backend/R/services/indicator_service.R"))
+source(file.path(project_root, "backend/R/services/auth_service.R"))
 
 source(file.path(
   project_root,
@@ -76,6 +77,19 @@ api_error_response <- function(e, res) {
   )
 }
 
+normalize_optional_query_parameter <- function(value) {
+
+  if (
+    is.null(value) ||
+    length(value) == 0L ||
+    (length(value) == 1L && is.na(value))
+  ) {
+    return(NULL)
+  }
+
+  value
+}
+
 
 # ==========================================
 # HEALTH CHECK
@@ -100,7 +114,25 @@ function() {
 #* Retrieve administrative units
 #* Get all administrative units
 #* @get /api/admin-units
-function(res) {
+function(req, res) {
+
+  # Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (res$status != 500L) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Authentication required."
+      ))
+    }
+
+    return(list(
+      status = "error",
+      message = "Unable to validate authentication."
+    ))
+  }
 
   tryCatch({
 
@@ -138,7 +170,36 @@ function(res) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get evapotranspiration data
 #* @get /api/evapotranspiration
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -167,7 +228,36 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get soil moisture data
 #* @get /api/soil-moisture
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -196,7 +286,36 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get water balance data
 #* @get /api/water-balance
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -226,7 +345,36 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* @param end_date End date (YYYY-MM-DD)
 #* Get crop water demand data
 #* @get /api/crop-water-demand
-function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
+function(
+    req,
+    res,
+    admin_id = NA_character_,
+    start_date = NA_character_,
+    end_date = NA_character_
+) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  start_date <- normalize_optional_query_parameter(start_date)
+  end_date <- normalize_optional_query_parameter(end_date)
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -253,7 +401,26 @@ function(res, admin_id = NULL, start_date = NULL, end_date = NULL) {
 #* Retrieve administrative boundaries as GeoJSON
 #* @get /api/map/admin-units
 #* @serializer contentType list(type="application/geo+json")
-function(res) {
+function(req, res) {
+  
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -282,11 +449,33 @@ function(res) {
 #* @param metric Required for water_balance
 #* @get /api/map/indicator
 #* @serializer contentType list(type="application/geo+json")
-function(res,
+function(req, res,
          indicator,
          date,
-         admin_id = NULL,
-         metric = NULL) {
+         admin_id = NA_character_,
+         metric = NA_character_) {
+
+  admin_id <- normalize_optional_query_parameter(admin_id)
+  metric <- normalize_optional_query_parameter(metric)
+
+  # Step 1: Authenticate the request
+  user <- authenticate_request(req, res)
+
+  if (is.null(user)) {
+    if (isTRUE(res$status == 500L)) {
+      return(list(
+        status = "error",
+        message = "Unable to validate authentication."
+      ))
+    }
+
+    res$status <- 401L
+
+    return(list(
+      status = "error",
+      message = "Authentication required."
+    ))
+  }
 
   tryCatch({
 
@@ -308,5 +497,277 @@ function(res,
 
     api_error_response(e, res)
 
+  })
+}
+
+
+# ==========================================
+# AUTHENTICATION API
+# ==========================================
+
+#* Authenticate a user
+#* Register a new AgWaterDS researcher
+#* @post /api/auth/register
+#* @parser json
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    body <- req$body
+
+    if (is.null(body)) {
+      res$status <- 400L
+      return(list(status = "error", message = "Request body is required."))
+    }
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    DBI::dbBegin(con)
+
+    user <- tryCatch(
+      register_user(
+        con = con,
+        full_name = body$full_name,
+        email = body$email,
+        password = body$password
+      ),
+      error = function(e) {
+        DBI::dbRollback(con)
+        stop(e)
+      }
+    )
+
+    DBI::dbCommit(con)
+
+    res$status <- 201L
+
+    list(
+      status = "success",
+      message = "Account registered successfully.",
+      user = user
+    )
+
+  }, error = function(e) {
+
+    if (inherits(e, "agwaterds_auth_error")) {
+      res$status <- 400L
+      return(list(status = "error", message = conditionMessage(e)))
+    }
+
+    if (inherits(e, "PqException")) {
+      if (grepl("unique", conditionMessage(e), ignore.case = TRUE)) {
+        res$status <- 409L
+        return(list(status = "error", message = "An account with this email already exists."))
+      }
+    }
+
+    api_error_response(e, res)
+  })
+}
+
+
+#* Log in to AgWaterDS
+#* @post /api/auth/login
+#* @parser json
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    body <- req$body
+
+    if (is.null(body)) {
+      res$status <- 400L
+      return(list(status = "error", message = "Request body is required."))
+    }
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    result <- login_user(
+      con = con,
+      email = body$email,
+      password = body$password
+    )
+
+    list(
+      status = "success",
+      message = "Login successful.",
+      user = result$user,
+      session = result$session
+    )
+
+  }, error = function(e) {
+
+    if (inherits(e, "agwaterds_auth_error")) {
+      res$status <- 401L
+      return(list(status = "error", message = conditionMessage(e)))
+    }
+
+    api_error_response(e, res)
+  })
+}
+
+
+
+# ==========================================
+# AUTHENTICATION HELPER
+# ==========================================
+
+authenticate_request <- function(req, res) {
+
+  auth_header <- req$HTTP_AUTHORIZATION
+
+  # Check Authorization header
+  if (
+    is.null(auth_header) ||
+    length(auth_header) != 1 ||
+    !grepl("^Bearer [a-f0-9]{64}$", auth_header)
+  ) {
+    res$status <- 401L
+
+    return(NULL)
+  }
+
+  token <- sub("^Bearer ", "", auth_header)
+
+  con <- NULL
+
+  tryCatch({
+
+    con <- connect_db()
+
+    user <- validate_session(con, token)
+
+    if (is.null(user)) {
+      res$status <- 401L
+      return(NULL)
+    }
+
+    user
+
+  }, error = function(e) {
+
+    message(
+      "Authentication validation error: ",
+      conditionMessage(e)
+    )
+
+    res$status <- 500L
+    NULL
+
+  }, finally = {
+
+    if (!is.null(con)) {
+      try(DBI::dbDisconnect(con), silent = TRUE)
+    }
+
+  })
+}
+
+
+
+# ==========================================
+# GET AUTHENTICATED USER
+# ==========================================
+
+#* Retrieve authenticated user information
+#* @get /api/auth/me
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    # Read Bearer token from Authorization header
+    auth_header <- req$HTTP_AUTHORIZATION
+
+    if (
+      is.null(auth_header) ||
+      length(auth_header) != 1 ||
+      !grepl("^Bearer [a-f0-9]{64}$", auth_header)
+    ) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Authentication required."
+      ))
+    }
+
+    token <- sub("^Bearer ", "", auth_header)
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    user <- validate_session(con, token)
+
+    if (is.null(user)) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Invalid or expired session."
+      ))
+    }
+
+    list(
+      status = "success",
+      user = user
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
+  })
+}
+
+
+
+# ==========================================
+# USER LOGOUT
+# ==========================================
+
+#* Log out the authenticated user
+#* @post /api/auth/logout
+#* @serializer json
+function(req, res) {
+
+  tryCatch({
+
+    auth_header <- req$HTTP_AUTHORIZATION
+
+    if (
+      is.null(auth_header) ||
+      length(auth_header) != 1 ||
+      !grepl("^Bearer [a-f0-9]{64}$", auth_header)
+    ) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Authentication required."
+      ))
+    }
+
+    token <- sub("^Bearer ", "", auth_header)
+
+    con <- connect_db()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    logged_out <- logout_user(con, token)
+
+    if (!logged_out) {
+      res$status <- 401L
+      return(list(
+        status = "error",
+        message = "Invalid or already revoked session."
+      ))
+    }
+
+    list(
+      status = "success",
+      message = "Logout successful."
+    )
+
+  }, error = function(e) {
+    api_error_response(e, res)
   })
 }
